@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EPUB Fixer</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/src/ui/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>📖 EPUB Fixer</h1>
+    <p class="subtitle">Fix chapters, update artwork, and clean up your EPUB files — entirely in your browser.</p>
+  </header>
+
+  <main>
+    <!-- Drop Zone -->
+    <section id="dropzone-section">
+      <div id="dropzone">
+        <p>Drag &amp; drop an EPUB file here</p>
+        <p class="small">or</p>
+        <button id="open-file-btn" type="button">Open File…</button>
+        <input type="file" id="file-input" accept=".epub" hidden />
+      </div>
+      <div id="file-info" hidden>
+        <span id="file-name"></span>
+        <button id="clear-file-btn" type="button" title="Remove file">✕</button>
+      </div>
+    </section>
+
+    <!-- Options Panel -->
+    <section id="options-section" hidden>
+      <h2>Options</h2>
+
+      <fieldset id="chapter-options">
+        <legend>Chapters</legend>
+        <label><input type="checkbox" id="opt-reorder" checked /> Re-order chapters by spine</label>
+        <label><input type="checkbox" id="opt-validate" checked /> Validate &amp; fix XHTML</label>
+        <label><input type="checkbox" id="opt-rebuild-toc" checked /> Rebuild table of contents</label>
+        <details>
+          <summary>Advanced</summary>
+          <label><input type="checkbox" id="opt-split" /> Split chapters at heading boundaries</label>
+          <label><input type="checkbox" id="opt-merge" /> Merge all chapters into one file</label>
+        </details>
+      </fieldset>
+
+      <fieldset id="cover-options">
+        <legend>Cover Image</legend>
+        <label><input type="checkbox" id="opt-replace-cover" /> Replace cover image</label>
+        <div id="cover-upload-area" hidden>
+          <input type="file" id="cover-input" accept="image/jpeg,image/png" />
+          <div id="cover-preview"></div>
+        </div>
+      </fieldset>
+
+      <fieldset id="string-options">
+        <legend>Remove Strings</legend>
+        <label><input type="checkbox" id="opt-remove-strings" /> Remove specific strings</label>
+        <div id="string-removal-area" hidden>
+          <div class="preset-group">
+            <strong>Presets:</strong>
+            <div id="preset-checkboxes"></div>
+          </div>
+          <label>
+            Custom strings (one per line):
+            <textarea id="custom-strings" rows="4" placeholder="Enter text to remove…"></textarea>
+          </label>
+          <label><input type="checkbox" id="opt-regex-mode" /> Treat as regex patterns</label>
+        </div>
+      </fieldset>
+    </section>
+
+    <!-- Action -->
+    <section id="action-section" hidden>
+      <button id="process-btn" type="button">🔧 Fix EPUB</button>
+      <button id="download-btn" type="button" hidden>⬇ Download Fixed EPUB</button>
+    </section>
+
+    <!-- Log -->
+    <section id="log-section">
+      <h2>Log</h2>
+      <div id="log"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
