@@ -1,4 +1,9 @@
 import { getChapterFiles, getFileContent, setFileContent } from "./reader.js"
+import {
+  parseChapterDocument,
+  collectHeadingElements,
+  normalizeWhitespace,
+} from "./headings.js"
 
 const OPF_NS = "http://www.idpf.org/2007/opf"
 const NCX_NS = "http://www.daisy.org/z3986/2005/ncx/"
@@ -70,12 +75,6 @@ function getElementsByName(parent, localName) {
   return Array.from(parent.getElementsByTagNameNS("*", localName))
 }
 
-function normalizeWhitespace(value) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
 function escapeXml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -83,46 +82,6 @@ function escapeXml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;")
-}
-
-function hasParserError(doc) {
-  if (!doc) {
-    return false
-  }
-
-  if (typeof doc.querySelector === "function" && doc.querySelector("parsererror")) {
-    return true
-  }
-
-  return Boolean(doc.getElementsByTagName("parsererror")[0] || doc.getElementsByTagNameNS("*", "parsererror")[0])
-}
-
-function parseChapterDocument(content) {
-  if (typeof DOMParser === "undefined") {
-    throw new Error("DOMParser is not available in this environment")
-  }
-
-  const parser = new DOMParser()
-  const xhtmlDoc = parser.parseFromString(String(content || ""), "application/xhtml+xml")
-
-  if (!hasParserError(xhtmlDoc)) {
-    return xhtmlDoc
-  }
-
-  return parser.parseFromString(String(content || ""), "text/html")
-}
-
-function collectHeadingElements(doc) {
-  if (typeof doc.querySelectorAll === "function") {
-    return Array.from(doc.querySelectorAll("h1, h2, h3"))
-  }
-
-  const result = []
-  const tags = ["h1", "h2", "h3"]
-  for (const tag of tags) {
-    result.push(...Array.from(doc.getElementsByTagName(tag)))
-  }
-  return result
 }
 
 function collectChapterEntries(chapter, chapterIndex, content) {

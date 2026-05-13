@@ -1,9 +1,17 @@
 import { initDropzone } from "./ui/dropzone.js"
 import { initOptions, getOptions } from "./ui/options.js"
 import { clearLog, log } from "./ui/log.js"
+import { renderChapterHeadings, clearChapterHeadings } from "./ui/chapter-headings.js"
 
 import { readEpub, getChapterFiles } from "./epub/reader.js"
 import { writeEpub } from "./epub/writer.js"
+import {
+  extractHeadings,
+  renameHeading,
+  deleteHeading,
+  changeHeadingLevel,
+  reorderHeadings,
+} from "./epub/headings.js"
 import {
   reorderChapters,
   validateXhtml,
@@ -49,6 +57,72 @@ document.addEventListener("DOMContentLoaded", () => {
   const actionSection = getElement("action-section")
   const processButton = getElement("process-btn")
   const downloadButton = getElement("download-btn")
+  const chapterHeadingsSection = getElement("chapter-headings-section")
+  const chapterHeadingsList = getElement("chapter-headings-list")
+  const rebuildTocCheckbox = getElement("opt-rebuild-toc")
+
+  function markHeadingsEdited() {
+    if (!rebuildTocCheckbox.checked) {
+      rebuildTocCheckbox.checked = true
+    }
+  }
+
+  async function refreshHeadingsPanel() {
+    if (!epubData) return
+    try {
+      const chapters = await extractHeadings(epubData)
+      renderChapterHeadings(chapterHeadingsList, chapters, headingCallbacks)
+    } catch (error) {
+      log(`Failed to refresh headings: ${getErrorMessage(error)}`, "warn")
+    }
+  }
+
+  const headingCallbacks = {
+    async onRename(chapterFullPath, headingId, newTitle) {
+      try {
+        await renameHeading(epubData, chapterFullPath, headingId, newTitle)
+        log(`Renamed heading: "${newTitle}"`)
+        markHeadingsEdited()
+        await refreshHeadingsPanel()
+      } catch (error) {
+        log(`Rename failed: ${getErrorMessage(error)}`, "error")
+        await refreshHeadingsPanel()
+      }
+    },
+    async onDelete(chapterFullPath, headingId) {
+      try {
+        await deleteHeading(epubData, chapterFullPath, headingId)
+        log("Deleted heading")
+        markHeadingsEdited()
+        await refreshHeadingsPanel()
+      } catch (error) {
+        log(`Delete failed: ${getErrorMessage(error)}`, "error")
+        await refreshHeadingsPanel()
+      }
+    },
+    async onChangeLevel(chapterFullPath, headingId, newLevel) {
+      try {
+        await changeHeadingLevel(epubData, chapterFullPath, headingId, newLevel)
+        log(`Changed heading level to H${newLevel}`)
+        markHeadingsEdited()
+        await refreshHeadingsPanel()
+      } catch (error) {
+        log(`Level change failed: ${getErrorMessage(error)}`, "error")
+        await refreshHeadingsPanel()
+      }
+    },
+    async onReorder(chapterFullPath, newOrder) {
+      try {
+        await reorderHeadings(epubData, chapterFullPath, newOrder)
+        log("Reordered headings")
+        markHeadingsEdited()
+        await refreshHeadingsPanel()
+      } catch (error) {
+        log(`Reorder failed: ${getErrorMessage(error)}`, "error")
+        await refreshHeadingsPanel()
+      }
+    },
+  }
 
   function resetUiState() {
     epubData = null
@@ -57,6 +131,8 @@ document.addEventListener("DOMContentLoaded", () => {
     processButton.hidden = false
     processButton.disabled = false
     downloadButton.hidden = true
+    chapterHeadingsSection.hidden = true
+    clearChapterHeadings(chapterHeadingsList)
   }
 
   async function onFileSelected(file) {
@@ -88,6 +164,17 @@ document.addEventListener("DOMContentLoaded", () => {
       log(`Author: ${author}`)
       log(`EPUB version: ${loadedEpub.version}`)
       log(`Chapter files: ${chapterFiles.length}`)
+
+      // Extract and display chapter headings
+      try {
+        const chapters = await extractHeadings(loadedEpub)
+        renderChapterHeadings(chapterHeadingsList, chapters, headingCallbacks)
+        chapterHeadingsSection.hidden = false
+        const totalHeadings = chapters.reduce((sum, ch) => sum + ch.headings.length, 0)
+        log(`Headings found: ${totalHeadings}`)
+      } catch (headingError) {
+        log(`Could not extract headings: ${getErrorMessage(headingError)}`, "warn")
+      }
     } catch (error) {
       log(getErrorMessage(error), "error")
       resetUiState()

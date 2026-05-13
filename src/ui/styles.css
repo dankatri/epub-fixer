@@ -209,7 +209,8 @@ section h2 {
 
 /* Animate section reveals */
 #options-section:not([hidden]),
-#action-section:not([hidden]) {
+#action-section:not([hidden]),
+#chapter-headings-section:not([hidden]) {
   animation: sectionReveal var(--duration-slow) var(--ease) both;
 }
 
@@ -863,7 +864,180 @@ textarea {
 }
 
 /* -------------------------------------------------
-   13. Responsive
+   14. Chapter Headings Panel
+   ------------------------------------------------- */
+
+.ch-chapter-group {
+  margin-bottom: 0.75rem;
+}
+
+.ch-chapter-group:last-child {
+  margin-bottom: 0;
+}
+
+.ch-chapter-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--c-text-3);
+  padding: 0.25rem 0.5rem;
+  margin-bottom: 0.125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ch-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--duration-fast) var(--ease),
+    opacity var(--duration-fast) var(--ease);
+}
+
+.ch-row:hover {
+  background: var(--c-hover);
+}
+
+.ch-level-2 {
+  padding-left: 1.5rem;
+}
+
+.ch-level-3 {
+  padding-left: 3rem;
+}
+
+.ch-drag-handle {
+  flex-shrink: 0;
+  cursor: grab;
+  color: var(--c-text-3);
+  opacity: 0.5;
+  display: inline-flex;
+  align-items: center;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.ch-row:hover .ch-drag-handle {
+  opacity: 1;
+}
+
+.ch-dragging {
+  opacity: 0.4;
+}
+
+.ch-drag-over {
+  background: var(--c-primary-soft);
+  outline: 2px solid var(--c-primary);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+.ch-level-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  padding: 0.1rem 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c-primary);
+  background: var(--c-primary-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.ch-level-badge:hover {
+  background: var(--c-primary);
+  color: var(--c-primary-fg);
+  border-color: var(--c-primary);
+}
+
+.ch-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--c-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  outline: none;
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.ch-title:hover {
+  border-color: var(--c-border);
+}
+
+.ch-title:focus {
+  white-space: normal;
+  border-color: var(--c-primary);
+  box-shadow: var(--shadow-focus);
+  background: var(--c-surface);
+}
+
+.ch-actions {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 0.125rem;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.ch-row:hover .ch-actions {
+  opacity: 1;
+}
+
+.ch-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--c-text-3);
+  border: 1px solid transparent;
+}
+
+.ch-icon-btn:hover {
+  background: var(--c-hover);
+  color: var(--c-text-1);
+  border-color: var(--c-border);
+}
+
+.ch-delete:hover {
+  color: var(--c-error);
+}
+
+.ch-empty {
+  text-align: center;
+  color: var(--c-text-3);
+  font-size: 0.875rem;
+  font-style: italic;
+  padding: 1rem 0;
+  margin: 0;
+}
+
+/* -------------------------------------------------
+   15. Responsive (continued)
    ------------------------------------------------- */
 
 @media (max-width: 640px) {
@@ -884,5 +1058,13 @@ textarea {
   #process-btn,
   #download-btn {
     min-width: 100%;
+  }
+
+  .ch-actions {
+    opacity: 1;
+  }
+
+  .ch-drag-handle {
+    opacity: 1;
   }
 }
