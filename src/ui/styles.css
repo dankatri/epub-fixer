@@ -963,7 +963,7 @@ textarea {
 }
 
 .ch-title {
-  flex: 1;
+  flex-shrink: 1;
   min-width: 0;
   font-size: 0.875rem;
   font-weight: 500;
@@ -990,6 +990,24 @@ textarea {
   border-color: var(--c-primary);
   box-shadow: var(--shadow-focus);
   background: var(--c-surface);
+}
+
+.ch-leader {
+  flex: 1;
+  min-width: 1rem;
+  border-bottom: 1px dotted var(--c-border-strong);
+  margin-bottom: 0.3em;
+  align-self: flex-end;
+}
+
+.ch-page {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--c-text-3);
+  min-width: 1.75rem;
+  text-align: right;
 }
 
 .ch-actions {

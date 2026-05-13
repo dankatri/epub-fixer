@@ -115,6 +115,12 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
     "ch-delete",
   )
 
+  // Dotted leader + page number
+  const leader = createElement("span", { className: "ch-leader" })
+  const pageNum = createElement("span", { className: "ch-page" }, [
+    String(heading.page || ""),
+  ])
+
   // Actions group
   const actions = createElement("span", { className: "ch-actions" })
   if (levelUp) actions.appendChild(levelUp)
@@ -124,6 +130,8 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
   row.appendChild(dragHandle)
   row.appendChild(badge)
   row.appendChild(titleEl)
+  row.appendChild(leader)
+  row.appendChild(pageNum)
   row.appendChild(actions)
 
   return row

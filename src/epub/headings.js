@@ -94,6 +94,52 @@ function serializeDocument(doc) {
   return xml
 }
 
+const WORDS_PER_PAGE = 250
+
+function countWordsInRange(doc, startNode, endNode) {
+  const body = doc.querySelector("body") || doc.documentElement
+  const walker = doc.createTreeWalker(body, 4 /* NodeFilter.SHOW_TEXT */)
+  let counting = startNode ? false : true
+  let words = 0
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode
+    if (node === startNode || node.parentNode === startNode) {
+      counting = true
+    }
+    if (endNode && (node === endNode || node.parentNode === endNode)) {
+      break
+    }
+    if (counting) {
+      const text = node.textContent.trim()
+      if (text) {
+        words += text.split(/\s+/).length
+      }
+    }
+  }
+
+  return words
+}
+
+function countWordsBeforeNode(doc, targetNode) {
+  const body = doc.querySelector("body") || doc.documentElement
+  const walker = doc.createTreeWalker(body, 4 /* NodeFilter.SHOW_TEXT */)
+  let words = 0
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode
+    if (node === targetNode || node.parentNode === targetNode) {
+      break
+    }
+    const text = node.textContent.trim()
+    if (text) {
+      words += text.split(/\s+/).length
+    }
+  }
+
+  return words
+}
+
 // ---------------------------------------------------------------------------
 // Extraction
 // ---------------------------------------------------------------------------
@@ -101,6 +147,7 @@ function serializeDocument(doc) {
 export async function extractHeadings(epubData) {
   const chapterFiles = getChapterFiles(epubData)
   const chapters = []
+  let cumulativeWords = 0
 
   for (let i = 0; i < chapterFiles.length; i++) {
     const chapter = chapterFiles[i]
@@ -121,9 +168,17 @@ export async function extractHeadings(epubData) {
       }
 
       const id = ensureHeadingId(el)
+      const wordsBefore = countWordsBeforeNode(doc, el)
+      const page = Math.max(1, Math.ceil((cumulativeWords + wordsBefore) / WORDS_PER_PAGE))
 
-      headings.push({ level, title, id })
+      headings.push({ level, title, id, page })
     }
+
+    // Count total words in this chapter file for cumulative tracking
+    const body = doc.querySelector("body") || doc.documentElement
+    const allText = body.textContent || ""
+    const chapterWords = allText.trim() ? allText.trim().split(/\s+/).length : 0
+    cumulativeWords += chapterWords
 
     // Write back the doc if we added any temp IDs
     const updatedContent = serializeDocument(doc)
