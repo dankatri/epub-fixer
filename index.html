@@ -9,8 +9,9 @@
   <link rel="stylesheet" href="/src/ui/styles.css" />
 </head>
 <body>
+  <div class="bg-decor" aria-hidden="true"></div>
   <header>
-    <h1>EPUB Fixer</h1>
+    <h1><span class="gradient-text">EPUB Fixer</span></h1>
     <p class="subtitle">Fix chapters, update artwork, and clean up your EPUB files — entirely in your browser.</p>
     <div class="privacy-badge">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -19,101 +20,108 @@
   </header>
 
   <main>
-    <!-- Drop Zone -->
-    <section id="dropzone-section">
-      <div id="dropzone" tabindex="0" aria-label="Drop EPUB file here or click to browse">
-        <svg class="dropzone-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-        <p class="dropzone-title">Drop your EPUB file here</p>
-        <p class="dropzone-hint">or</p>
-        <button id="open-file-btn" type="button">Choose file</button>
-        <input type="file" id="file-input" accept=".epub" hidden />
-      </div>
-      <div id="file-info" hidden>
-        <div class="file-info-left">
-          <svg class="file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-          <span id="file-name"></span>
-        </div>
-        <button id="clear-file-btn" type="button" title="Remove file" aria-label="Remove selected file">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-      </div>
-    </section>
-
-    <!-- Chapter Headings -->
-    <section id="chapter-headings-section" hidden>
-      <h2>Chapter Headings</h2>
-      <div id="chapter-headings-list"></div>
-    </section>
-
-    <!-- Options Panel -->
-    <section id="options-section" hidden>
-      <h2>Options</h2>
-
-      <fieldset id="chapter-options">
-        <legend>Chapters</legend>
-        <label><input type="checkbox" id="opt-reorder" checked /> Re-order chapters by spine</label>
-        <label><input type="checkbox" id="opt-validate" checked /> Validate &amp; fix XHTML</label>
-        <label><input type="checkbox" id="opt-rebuild-toc" checked /> Rebuild table of contents</label>
-        <details>
-          <summary>Advanced</summary>
-          <label><input type="checkbox" id="opt-split" /> Split chapters at heading boundaries</label>
-          <label><input type="checkbox" id="opt-merge" /> Merge all chapters into one file</label>
-        </details>
-      </fieldset>
-
-      <fieldset id="cover-options">
-        <legend>Cover Image</legend>
-        <label><input type="checkbox" id="opt-replace-cover" /> Replace cover image</label>
-        <div id="cover-upload-area" hidden>
-          <input type="file" id="cover-input" accept="image/jpeg,image/png" />
-          <div id="cover-preview"></div>
-        </div>
-      </fieldset>
-
-      <fieldset id="string-options">
-        <legend>Remove Strings</legend>
-        <label><input type="checkbox" id="opt-remove-strings" /> Remove specific strings</label>
-        <div id="string-removal-area" hidden>
-          <div class="preset-group">
-            <strong>Presets:</strong>
-            <div id="preset-checkboxes"></div>
+    <div class="main-grid">
+      <!-- Left Column: Upload + Options + Actions -->
+      <div class="col-left">
+        <!-- Drop Zone -->
+        <section id="dropzone-section">
+          <div id="dropzone" tabindex="0" aria-label="Drop EPUB file here or click to browse">
+            <svg class="dropzone-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p class="dropzone-title">Drop your EPUB file here</p>
+            <p class="dropzone-hint">or</p>
+            <button id="open-file-btn" type="button">Choose file</button>
+            <input type="file" id="file-input" accept=".epub" hidden />
           </div>
-          <label class="textarea-label">
-            Custom strings (one per line):
-            <textarea id="custom-strings" rows="4" placeholder="Enter text to remove…"></textarea>
-          </label>
-          <label><input type="checkbox" id="opt-regex-mode" /> Treat as regex patterns</label>
-        </div>
-      </fieldset>
-    </section>
+          <div id="file-info" hidden>
+            <div class="file-info-left">
+              <svg class="file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span id="file-name"></span>
+            </div>
+            <button id="clear-file-btn" type="button" title="Remove file" aria-label="Remove selected file">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </section>
 
-    <!-- Action -->
-    <section id="action-section" hidden>
-      <button id="process-btn" type="button">
-        <span class="btn-spinner" aria-hidden="true"></span>
-        <span class="btn-label">Fix EPUB</span>
-      </button>
-      <button id="download-btn" type="button" hidden>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        Download Fixed EPUB
-      </button>
-    </section>
+        <!-- Options Panel -->
+        <section id="options-section" hidden>
+          <h2>Options</h2>
 
-    <!-- Log -->
+          <fieldset id="chapter-options">
+            <legend>Chapters</legend>
+            <label><input type="checkbox" id="opt-reorder" checked /> Re-order chapters by spine</label>
+            <label><input type="checkbox" id="opt-validate" checked /> Validate &amp; fix XHTML</label>
+            <label><input type="checkbox" id="opt-rebuild-toc" checked /> Rebuild table of contents</label>
+            <details>
+              <summary>Advanced</summary>
+              <label><input type="checkbox" id="opt-split" /> Split chapters at heading boundaries</label>
+              <label><input type="checkbox" id="opt-merge" /> Merge all chapters into one file</label>
+            </details>
+          </fieldset>
+
+          <fieldset id="cover-options">
+            <legend>Cover Image</legend>
+            <label><input type="checkbox" id="opt-replace-cover" /> Replace cover image</label>
+            <div id="cover-upload-area" hidden>
+              <input type="file" id="cover-input" accept="image/jpeg,image/png" />
+              <div id="cover-preview"></div>
+            </div>
+          </fieldset>
+
+          <fieldset id="string-options">
+            <legend>Remove Strings</legend>
+            <label><input type="checkbox" id="opt-remove-strings" /> Remove specific strings</label>
+            <div id="string-removal-area" hidden>
+              <div class="preset-group">
+                <strong>Presets:</strong>
+                <div id="preset-checkboxes"></div>
+              </div>
+              <label class="textarea-label">
+                Custom strings (one per line):
+                <textarea id="custom-strings" rows="4" placeholder="Enter text to remove…"></textarea>
+              </label>
+              <label><input type="checkbox" id="opt-regex-mode" /> Treat as regex patterns</label>
+            </div>
+          </fieldset>
+        </section>
+
+        <!-- Action -->
+        <section id="action-section" hidden>
+          <button id="process-btn" type="button">
+            <span class="btn-spinner" aria-hidden="true"></span>
+            <span class="btn-label">Fix EPUB</span>
+          </button>
+          <button id="download-btn" type="button" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download Fixed EPUB
+          </button>
+        </section>
+      </div>
+
+      <!-- Right Column: Chapter Headings -->
+      <div class="col-right">
+        <section id="chapter-headings-section" hidden>
+          <h2>Chapter Headings</h2>
+          <div id="chapter-headings-list"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Log: full width below the grid -->
     <section id="log-section">
       <h2>Activity</h2>
       <div id="log"></div>
