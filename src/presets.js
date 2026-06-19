@@ -33,6 +33,13 @@ export const PRESETS = [
     ],
   },
   {
+    id: "oceanofpdf",
+    label: "OceanofPDF watermark",
+    strings: [
+      "OceanofPDF.com",
+    ],
+  },
+  {
     id: "drm-notices",
     label: "DRM/copyright notices",
     strings: [

@@ -23,6 +23,7 @@ import { replaceCover } from "./epub/cover.js"
 import { removeStrings } from "./epub/strings.js"
 
 let epubData = null
+let fixedEpub = null
 
 function getElement(id) {
   const element = document.getElementById(id)
@@ -39,17 +40,39 @@ function getErrorMessage(error) {
   return String(error)
 }
 
-function buildFixedFilename(originalFilename) {
-  const safeName = String(originalFilename || "").trim()
-  if (!safeName) {
-    return "fixed.epub"
+function sanitizeBaseName(value) {
+  let base = String(value || "").trim()
+  if (base.toLowerCase().endsWith(".epub")) {
+    base = base.slice(0, -5)
   }
+  return base.replace(/[/\\:*?"<>|]/g, "_").trim()
+}
 
-  if (safeName.toLowerCase().endsWith(".epub")) {
-    return `${safeName.slice(0, -5)}_fixed.epub`
+function defaultBaseName(loadedEpub) {
+  const fromTitle = sanitizeBaseName(loadedEpub?.metadata?.title)
+  if (fromTitle) {
+    return fromTitle
   }
+  const fromFile = sanitizeBaseName(loadedEpub?.originalFilename)
+  return fromFile || "fixed"
+}
 
-  return `${safeName}_fixed.epub`
+function buildFixedFilename(rawName, fallbackBase) {
+  let base = sanitizeBaseName(rawName)
+  if (!base) {
+    base = sanitizeBaseName(fallbackBase) || "fixed"
+  }
+  return `${base}.epub`
+}
+
+async function cloneEpubData(source) {
+  const blob = await source.zip.generateAsync({
+    type: "blob",
+    mimeType: "application/epub+zip",
+  })
+  const clone = await readEpub(blob)
+  clone.originalFilename = source.originalFilename
+  return clone
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -60,11 +83,29 @@ document.addEventListener("DOMContentLoaded", () => {
   const chapterHeadingsSection = getElement("chapter-headings-section")
   const chapterHeadingsList = getElement("chapter-headings-list")
   const rebuildTocCheckbox = getElement("opt-rebuild-toc")
+  const filenameInput = getElement("opt-filename")
+  const processButtonLabel = processButton.querySelector(".btn-label")
+
+  function setProcessLabel(text) {
+    if (processButtonLabel) {
+      processButtonLabel.textContent = text
+    }
+  }
+
+  // Mark a previously fixed result as out of date so the user is nudged to
+  // re-run "Fix" after changing options or editing headings — no re-upload needed.
+  function markFixStale() {
+    if (!fixedEpub) return
+    fixedEpub = null
+    downloadButton.hidden = true
+    setProcessLabel("Fix EPUB")
+  }
 
   function markHeadingsEdited() {
     if (!rebuildTocCheckbox.checked) {
       rebuildTocCheckbox.checked = true
     }
+    markFixStale()
   }
 
   async function refreshHeadingsPanel() {
@@ -126,11 +167,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function resetUiState() {
     epubData = null
+    fixedEpub = null
     optionsSection.hidden = true
     actionSection.hidden = true
     processButton.hidden = false
     processButton.disabled = false
+    setProcessLabel("Fix EPUB")
     downloadButton.hidden = true
+    filenameInput.value = ""
     chapterHeadingsSection.hidden = true
     clearChapterHeadings(chapterHeadingsList)
   }
@@ -149,6 +193,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const loadedEpub = await readEpub(file)
       loadedEpub.originalFilename = file.name
       epubData = loadedEpub
+      fixedEpub = null
 
       const chapterFiles = getChapterFiles(loadedEpub)
       const title = loadedEpub.metadata?.title || "Unknown title"
@@ -158,7 +203,9 @@ document.addEventListener("DOMContentLoaded", () => {
       actionSection.hidden = false
       processButton.hidden = false
       processButton.disabled = false
+      setProcessLabel("Fix EPUB")
       downloadButton.hidden = true
+      filenameInput.value = defaultBaseName(loadedEpub)
 
       log(`Title: ${title}`, "success")
       log(`Author: ${author}`)
@@ -189,6 +236,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     processButton.disabled = true
 
+    let working
+    try {
+      // Work on a fresh clone of the loaded EPUB (plus any heading edits) so the
+      // user can tweak options and re-run "Fix" without re-uploading, and without
+      // operations stacking on top of a previous run.
+      working = await cloneEpubData(epubData)
+    } catch (error) {
+      log(`Failed to prepare EPUB: ${getErrorMessage(error)}`, "error")
+      processButton.disabled = false
+      return
+    }
+
     try {
       const options = getOptions()
 
@@ -201,7 +260,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (options.reorder) {
         log("Reordering chapters...")
         try {
-          const result = await reorderChapters(epubData)
+          const result = await reorderChapters(working)
           log(`Reordered chapters: ${result.reordered}`, "success")
           if (result.skipped?.length) {
             log(`Skipped: ${result.skipped.join(", ")}`, "warn")
@@ -214,7 +273,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (options.validate) {
         log("Validating XHTML...")
         try {
-          const result = await validateXhtml(epubData)
+          const result = await validateXhtml(working)
           log(`Valid XHTML files: ${result.valid}`, "success")
           log(`Fixed XHTML files: ${result.fixed}`, "success")
           if (result.errors?.length) {
@@ -230,7 +289,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (options.split) {
         log("Splitting chapters...")
         try {
-          const result = await splitChapters(epubData)
+          const result = await splitChapters(working)
           log(
             `Split complete: ${result.originalFiles} files -> ${result.resultFiles} files`,
             "success",
@@ -243,7 +302,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (options.merge) {
         log("Merging chapters...")
         try {
-          const result = await mergeChapters(epubData)
+          const result = await mergeChapters(working)
           log(`Merged chapter files: ${result.mergedCount}`, "success")
           if (result.outputFile) {
             log(`Merged output file: ${result.outputFile}`)
@@ -256,7 +315,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (options.rebuildToc) {
         log("Rebuilding table of contents...")
         try {
-          const result = await rebuildToc(epubData)
+          const result = await rebuildToc(working)
           log(`TOC rebuilt with ${result.headingsFound} headings and ${result.navPoints} entries`, "success")
         } catch (error) {
           log(`TOC rebuild failed: ${getErrorMessage(error)}`, "error")
@@ -266,7 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (options.replaceCover && options.coverFile) {
         log("Replacing cover image...")
         try {
-          const result = await replaceCover(epubData, options.coverFile)
+          const result = await replaceCover(working, options.coverFile)
           const action = result.replaced ? "Replaced existing cover" : "Added new cover"
           log(`${action}: ${result.path}`, "success")
         } catch (error) {
@@ -277,7 +336,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (options.removeStrings) {
         log("Removing configured strings...")
         try {
-          const result = await removeStrings(epubData, {
+          const result = await removeStrings(working, {
             customStrings: options.customStrings,
             regexMode: options.regexMode,
             presetIds: options.presetIds,
@@ -294,25 +353,28 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+      fixedEpub = working
       log("All operations complete!", "success")
       downloadButton.hidden = false
-      processButton.hidden = true
+      setProcessLabel("Re-fix EPUB")
     } catch (error) {
       log(getErrorMessage(error), "error")
+    } finally {
       processButton.disabled = false
     }
   }
 
   async function handleDownloadClick() {
-    if (!epubData) {
+    const target = fixedEpub || epubData
+    if (!target) {
       log("No EPUB loaded.", "warn")
       return
     }
 
-    const filename = buildFixedFilename(epubData.originalFilename)
+    const filename = buildFixedFilename(filenameInput.value, defaultBaseName(target))
 
     try {
-      await writeEpub(epubData, filename)
+      await writeEpub(target, filename)
       log(`Download started: ${filename}`, "success")
     } catch (error) {
       log(getErrorMessage(error), "error")
@@ -323,5 +385,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initOptions()
   processButton.addEventListener("click", handleProcessClick)
   downloadButton.addEventListener("click", handleDownloadClick)
+  // Changing any option after a fix invalidates the result; nudge a re-fix.
+  optionsSection.addEventListener("change", markFixStale)
   resetUiState()
 })
