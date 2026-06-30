@@ -4,6 +4,7 @@ import { clearLog, log } from "./ui/log.js"
 import { renderChapterHeadings, clearChapterHeadings } from "./ui/chapter-headings.js"
 
 import { readEpub, getChapterFiles } from "./epub/reader.js"
+import { convertPdfToEpub } from "./pdf/convert.js"
 import { writeEpub } from "./epub/writer.js"
 import {
   extractHeadings,
@@ -187,11 +188,26 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     clearLog()
-    log(`Loading EPUB: ${file.name}`)
+
+    const isPdf =
+      file.type === "application/pdf" || /\.pdf$/i.test(file.name || "")
 
     try {
-      const loadedEpub = await readEpub(file)
-      loadedEpub.originalFilename = file.name
+      let sourceFile = file
+      let originalFilename = file.name
+
+      if (isPdf) {
+        log(`Converting PDF to EPUB: ${file.name}`)
+        const epubBlob = await convertPdfToEpub(file, (message) => log(message))
+        sourceFile = epubBlob
+        originalFilename = file.name.replace(/\.pdf$/i, ".epub")
+        log("PDF converted to EPUB", "success")
+      } else {
+        log(`Loading EPUB: ${file.name}`)
+      }
+
+      const loadedEpub = await readEpub(sourceFile)
+      loadedEpub.originalFilename = originalFilename
       epubData = loadedEpub
       fixedEpub = null
 
