@@ -70,7 +70,7 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
 
   badge.addEventListener("click", () => {
     const nextLevel = (heading.level % 3) + 1
-    callbacks.onChangeLevel(chapterFullPath, heading.id, nextLevel)
+    callbacks.onChangeLevel(chapterFullPath, heading.id, nextLevel, heading.title)
   })
 
   // Title (editable)
@@ -83,7 +83,7 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
   titleEl.addEventListener("blur", () => {
     const newTitle = titleEl.textContent.trim()
     if (newTitle && newTitle !== heading.title) {
-      callbacks.onRename(chapterFullPath, heading.id, newTitle)
+      callbacks.onRename(chapterFullPath, heading.id, newTitle, heading.title)
     } else if (!newTitle) {
       titleEl.textContent = heading.title
     }
@@ -105,7 +105,7 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
     ? createIconButton(
         "Promote heading level",
         '<polyline points="18 15 12 9 6 15"/>',
-        () => callbacks.onChangeLevel(chapterFullPath, heading.id, heading.level - 1),
+        () => callbacks.onChangeLevel(chapterFullPath, heading.id, heading.level - 1, heading.title),
         "ch-level-up",
       )
     : null
@@ -115,7 +115,7 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
     ? createIconButton(
         "Demote heading level",
         '<polyline points="6 9 12 15 18 9"/>',
-        () => callbacks.onChangeLevel(chapterFullPath, heading.id, heading.level + 1),
+        () => callbacks.onChangeLevel(chapterFullPath, heading.id, heading.level + 1, heading.title),
         "ch-level-down",
       )
     : null
@@ -124,7 +124,7 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
   const deleteBtn = createIconButton(
     "Delete heading",
     '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
-    () => callbacks.onDelete(chapterFullPath, heading.id),
+    () => callbacks.onDelete(chapterFullPath, heading.id, heading.title),
     "ch-delete",
   )
 

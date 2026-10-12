@@ -23,9 +23,12 @@ import {
 import { rebuildToc } from "./epub/toc.js"
 import { replaceCover } from "./epub/cover.js"
 import { removeStrings } from "./epub/strings.js"
+import { createHistory } from "./epub/history.js"
 
 let epubData = null
 let fixedEpub = null
+
+const headingHistory = createHistory()
 
 function getElement(id) {
   const element = document.getElementById(id)
@@ -84,6 +87,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const downloadButton = getElement("download-btn")
   const chapterHeadingsSection = getElement("chapter-headings-section")
   const chapterHeadingsList = getElement("chapter-headings-list")
+  const undoButton = getElement("headings-undo-btn")
   const rebuildTocCheckbox = getElement("opt-rebuild-toc")
   const filenameInput = getElement("opt-filename")
   const processButtonLabel = processButton.querySelector(".btn-label")
@@ -120,61 +124,97 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function updateUndoButton() {
+    const label = headingHistory.nextLabel
+    undoButton.disabled = !label
+    undoButton.title = label ? `Undo ${label}` : "Nothing to undo"
+  }
+
+  headingHistory.onChange(updateUndoButton)
+
+  /**
+   * Run a heading mutation with undo support: snapshot the affected chapter
+   * files first, then apply the edit. A failed edit is rolled back to the
+   * snapshot so a partially applied change can never be left behind.
+   */
+  async function runHeadingEdit({ paths, label, apply, success, failure }) {
+    if (!epubData) return
+
+    let captured = false
+    try {
+      await headingHistory.capture(epubData, paths, label)
+      captured = true
+      await apply()
+      log(success)
+      markHeadingsEdited()
+    } catch (error) {
+      if (captured) {
+        headingHistory.undo(epubData)
+      }
+      log(`${failure}: ${getErrorMessage(error)}`, "error")
+    }
+
+    await refreshHeadingsPanel()
+  }
+
+  async function handleUndoClick() {
+    if (!epubData || !headingHistory.canUndo) {
+      return
+    }
+
+    const label = headingHistory.undo(epubData)
+    log(`Undid ${label}`)
+    markHeadingsEdited()
+    await refreshHeadingsPanel()
+  }
+
   const headingCallbacks = {
-    async onRename(chapterFullPath, headingId, newTitle) {
-      try {
-        await renameHeading(epubData, chapterFullPath, headingId, newTitle)
-        log(`Renamed heading: "${newTitle}"`)
-        markHeadingsEdited()
-        await refreshHeadingsPanel()
-      } catch (error) {
-        log(`Rename failed: ${getErrorMessage(error)}`, "error")
-        await refreshHeadingsPanel()
-      }
+    async onRename(chapterFullPath, headingId, newTitle, oldTitle) {
+      await runHeadingEdit({
+        paths: [chapterFullPath],
+        label: `rename of "${oldTitle || newTitle}"`,
+        apply: () => renameHeading(epubData, chapterFullPath, headingId, newTitle),
+        success: `Renamed heading: "${newTitle}"`,
+        failure: "Rename failed",
+      })
     },
-    async onDelete(chapterFullPath, headingId) {
-      try {
-        await deleteHeading(epubData, chapterFullPath, headingId)
-        log("Deleted heading")
-        markHeadingsEdited()
-        await refreshHeadingsPanel()
-      } catch (error) {
-        log(`Delete failed: ${getErrorMessage(error)}`, "error")
-        await refreshHeadingsPanel()
-      }
+    async onDelete(chapterFullPath, headingId, title) {
+      await runHeadingEdit({
+        paths: [chapterFullPath],
+        label: title ? `deletion of "${title}"` : "heading deletion",
+        apply: () => deleteHeading(epubData, chapterFullPath, headingId),
+        success: title ? `Deleted heading: "${title}"` : "Deleted heading",
+        failure: "Delete failed",
+      })
     },
-    async onChangeLevel(chapterFullPath, headingId, newLevel) {
-      try {
-        await changeHeadingLevel(epubData, chapterFullPath, headingId, newLevel)
-        log(`Changed heading level to H${newLevel}`)
-        markHeadingsEdited()
-        await refreshHeadingsPanel()
-      } catch (error) {
-        log(`Level change failed: ${getErrorMessage(error)}`, "error")
-        await refreshHeadingsPanel()
-      }
+    async onChangeLevel(chapterFullPath, headingId, newLevel, title) {
+      await runHeadingEdit({
+        paths: [chapterFullPath],
+        label: title ? `level change of "${title}"` : "heading level change",
+        apply: () => changeHeadingLevel(epubData, chapterFullPath, headingId, newLevel),
+        success: `Changed heading level to H${newLevel}`,
+        failure: "Level change failed",
+      })
     },
     async onBulkChangeLevel(updates) {
-      try {
-        await changeHeadingLevels(epubData, updates)
-        log(`Changed ${updates.length} heading${updates.length === 1 ? "" : "s"} to H${updates[0].newLevel}`)
-        markHeadingsEdited()
-        await refreshHeadingsPanel()
-      } catch (error) {
-        log(`Bulk level change failed: ${getErrorMessage(error)}`, "error")
-        await refreshHeadingsPanel()
-      }
+      const count = updates.length
+      const newLevel = updates[0].newLevel
+      await runHeadingEdit({
+        paths: updates.map((update) => update.chapterFullPath),
+        label: `level change of ${count} heading${count === 1 ? "" : "s"}`,
+        apply: () => changeHeadingLevels(epubData, updates),
+        success: `Changed ${count} heading${count === 1 ? "" : "s"} to H${newLevel}`,
+        failure: "Bulk level change failed",
+      })
     },
     async onReorder(chapterFullPath, newOrder) {
-      try {
-        await reorderHeadings(epubData, chapterFullPath, newOrder)
-        log("Reordered headings")
-        markHeadingsEdited()
-        await refreshHeadingsPanel()
-      } catch (error) {
-        log(`Reorder failed: ${getErrorMessage(error)}`, "error")
-        await refreshHeadingsPanel()
-      }
+      await runHeadingEdit({
+        paths: [chapterFullPath],
+        label: "heading reorder",
+        apply: () => reorderHeadings(epubData, chapterFullPath, newOrder),
+        success: "Reordered headings",
+        failure: "Reorder failed",
+      })
     },
   }
 
@@ -189,6 +229,7 @@ document.addEventListener("DOMContentLoaded", () => {
     downloadButton.hidden = true
     filenameInput.value = ""
     chapterHeadingsSection.hidden = true
+    headingHistory.clear()
     clearChapterHeadings(chapterHeadingsList)
   }
 
@@ -222,6 +263,7 @@ document.addEventListener("DOMContentLoaded", () => {
       loadedEpub.originalFilename = originalFilename
       epubData = loadedEpub
       fixedEpub = null
+      headingHistory.clear()
 
       const chapterFiles = getChapterFiles(loadedEpub)
       const title = loadedEpub.metadata?.title || "Unknown title"
@@ -413,6 +455,25 @@ document.addEventListener("DOMContentLoaded", () => {
   initOptions()
   processButton.addEventListener("click", handleProcessClick)
   downloadButton.addEventListener("click", handleDownloadClick)
+  undoButton.addEventListener("click", handleUndoClick)
+
+  // Ctrl/Cmd+Z undoes the last heading edit, unless the user is typing — the
+  // heading titles are contenteditable and own their native undo behaviour.
+  document.addEventListener("keydown", (event) => {
+    if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return
+    if (String(event.key).toLowerCase() !== "z") return
+
+    const target = event.target
+    if (target && (target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA")) {
+      return
+    }
+
+    if (!epubData || !headingHistory.canUndo) return
+
+    event.preventDefault()
+    handleUndoClick()
+  })
+
   // Changing any option after a fix invalidates the result; nudge a re-fix.
   optionsSection.addEventListener("change", markFixStale)
   resetUiState()
