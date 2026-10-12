@@ -43,6 +43,19 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
     draggable: "true",
     "data-heading-id": heading.id,
     "data-chapter": chapterFullPath,
+    "data-level": String(heading.level),
+  })
+
+  // Selection checkbox for bulk operations
+  const checkbox = createElement("input", {
+    type: "checkbox",
+    className: "ch-select",
+    title: "Select heading for bulk actions",
+    "aria-label": "Select heading",
+  })
+  checkbox.addEventListener("change", () => {
+    row.classList.toggle("ch-selected", checkbox.checked)
+    callbacks.onSelectionChange()
   })
 
   // Drag handle
@@ -127,6 +140,7 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
   if (levelDown) actions.appendChild(levelDown)
   actions.appendChild(deleteBtn)
 
+  row.appendChild(checkbox)
   row.appendChild(dragHandle)
   row.appendChild(badge)
   row.appendChild(titleEl)
@@ -213,6 +227,75 @@ function setupDragAndDrop(container, callbacks) {
   })
 }
 
+function buildBulkToolbar(container, callbacks) {
+  const toolbar = createElement("div", {
+    className: "ch-bulk-toolbar",
+    hidden: "",
+  })
+
+  const count = createElement("span", { className: "ch-bulk-count" }, ["0 selected"])
+
+  const label = createElement("span", { className: "ch-bulk-label" }, ["Set level:"])
+
+  const makeLevelBtn = (level) => {
+    const btn = createElement("button", {
+      type: "button",
+      className: "ch-bulk-btn",
+      title: `Change selected headings to ${LEVEL_LABELS[level]}`,
+    }, [LEVEL_LABELS[level]])
+    btn.addEventListener("click", () => {
+      const updates = getSelectedRows(container).map((row) => ({
+        chapterFullPath: row.dataset.chapter,
+        headingId: row.dataset.headingId,
+        newLevel: level,
+      }))
+      if (updates.length > 0) {
+        callbacks.onBulkChangeLevel(updates)
+      }
+    })
+    return btn
+  }
+
+  const clearBtn = createElement("button", {
+    type: "button",
+    className: "ch-bulk-btn ch-bulk-clear",
+    title: "Clear selection",
+  }, ["Clear"])
+  clearBtn.addEventListener("click", () => {
+    for (const cb of container.querySelectorAll(".ch-select:checked")) {
+      cb.checked = false
+      cb.closest(".ch-row")?.classList.remove("ch-selected")
+    }
+    updateBulkToolbar(container)
+  })
+
+  toolbar.appendChild(count)
+  toolbar.appendChild(label)
+  toolbar.appendChild(makeLevelBtn(1))
+  toolbar.appendChild(makeLevelBtn(2))
+  toolbar.appendChild(makeLevelBtn(3))
+  toolbar.appendChild(clearBtn)
+
+  return toolbar
+}
+
+function getSelectedRows(container) {
+  return Array.from(container.querySelectorAll(".ch-select:checked")).map((cb) =>
+    cb.closest(".ch-row"),
+  ).filter(Boolean)
+}
+
+function updateBulkToolbar(container) {
+  const toolbar = container.querySelector(".ch-bulk-toolbar")
+  if (!toolbar) return
+  const selected = container.querySelectorAll(".ch-select:checked").length
+  const countEl = toolbar.querySelector(".ch-bulk-count")
+  if (countEl) {
+    countEl.textContent = `${selected} selected`
+  }
+  toolbar.hidden = selected === 0
+}
+
 export function renderChapterHeadings(container, chapters, callbacks) {
   container.textContent = ""
 
@@ -225,6 +308,13 @@ export function renderChapterHeadings(container, chapters, callbacks) {
     container.appendChild(empty)
     return
   }
+
+  const rowCallbacks = {
+    ...callbacks,
+    onSelectionChange: () => updateBulkToolbar(container),
+  }
+
+  container.appendChild(buildBulkToolbar(container, callbacks))
 
   for (const chapter of chapters) {
     if (chapter.headings.length === 0) {
@@ -242,7 +332,7 @@ export function renderChapterHeadings(container, chapters, callbacks) {
     group.appendChild(label)
 
     for (const heading of chapter.headings) {
-      group.appendChild(buildHeadingRow(heading, chapter.chapterFullPath, callbacks))
+      group.appendChild(buildHeadingRow(heading, chapter.chapterFullPath, rowCallbacks))
     }
 
     container.appendChild(group)

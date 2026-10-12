@@ -11,6 +11,7 @@ import {
   renameHeading,
   deleteHeading,
   changeHeadingLevel,
+  changeHeadingLevels,
   reorderHeadings,
 } from "./epub/headings.js"
 import {
@@ -150,6 +151,17 @@ document.addEventListener("DOMContentLoaded", () => {
         await refreshHeadingsPanel()
       } catch (error) {
         log(`Level change failed: ${getErrorMessage(error)}`, "error")
+        await refreshHeadingsPanel()
+      }
+    },
+    async onBulkChangeLevel(updates) {
+      try {
+        await changeHeadingLevels(epubData, updates)
+        log(`Changed ${updates.length} heading${updates.length === 1 ? "" : "s"} to H${updates[0].newLevel}`)
+        markHeadingsEdited()
+        await refreshHeadingsPanel()
+      } catch (error) {
+        log(`Bulk level change failed: ${getErrorMessage(error)}`, "error")
         await refreshHeadingsPanel()
       }
     },

@@ -236,12 +236,11 @@ export async function deleteHeading(epubData, chapterFullPath, headingId) {
   saveDocument(epubData, chapterFullPath, doc)
 }
 
-export async function changeHeadingLevel(epubData, chapterFullPath, headingId, newLevel) {
+function changeHeadingLevelInDoc(doc, headingId, newLevel) {
   if (newLevel < 1 || newLevel > 3) {
     throw new Error(`Invalid heading level: ${newLevel}`)
   }
 
-  const doc = await loadAndParse(epubData, chapterFullPath)
   const oldEl = findHeadingById(doc, headingId)
 
   const ns = oldEl.namespaceURI
@@ -261,7 +260,36 @@ export async function changeHeadingLevel(epubData, chapterFullPath, headingId, n
   }
 
   oldEl.parentNode.replaceChild(newEl, oldEl)
+}
+
+export async function changeHeadingLevel(epubData, chapterFullPath, headingId, newLevel) {
+  const doc = await loadAndParse(epubData, chapterFullPath)
+  changeHeadingLevelInDoc(doc, headingId, newLevel)
   saveDocument(epubData, chapterFullPath, doc)
+}
+
+/**
+ * Change the level of many headings at once.
+ * `updates` is an array of { chapterFullPath, headingId, newLevel }.
+ * Headings are grouped by chapter so each chapter document is parsed and
+ * serialized only once.
+ */
+export async function changeHeadingLevels(epubData, updates) {
+  const byChapter = new Map()
+  for (const update of updates) {
+    if (!byChapter.has(update.chapterFullPath)) {
+      byChapter.set(update.chapterFullPath, [])
+    }
+    byChapter.get(update.chapterFullPath).push(update)
+  }
+
+  for (const [chapterFullPath, chapterUpdates] of byChapter) {
+    const doc = await loadAndParse(epubData, chapterFullPath)
+    for (const { headingId, newLevel } of chapterUpdates) {
+      changeHeadingLevelInDoc(doc, headingId, newLevel)
+    }
+    saveDocument(epubData, chapterFullPath, doc)
+  }
 }
 
 /**
