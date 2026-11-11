@@ -506,21 +506,184 @@ function getFallbackHref(epubData) {
   return ""
 }
 
+function getDirectChild(element, localName) {
+  return Array.from(element?.children || []).find(
+    (child) => String(child.localName || "").toLowerCase() === localName,
+  ) || null
+}
+
+function getDirectChildren(element, localName) {
+  return Array.from(element?.children || []).filter(
+    (child) => String(child.localName || "").toLowerCase() === localName,
+  )
+}
+
+function decodePathPart(value) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+function resolveTocHref(tocPath, href) {
+  const rawHref = String(href || "").trim()
+  if (!rawHref || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(rawHref)) {
+    return null
+  }
+
+  const withoutQuery = rawHref.split("?")[0]
+  const fragmentIndex = withoutQuery.indexOf("#")
+  const targetPath = fragmentIndex >= 0 ? withoutQuery.slice(0, fragmentIndex) : withoutQuery
+  const fragment = fragmentIndex >= 0 ? withoutQuery.slice(fragmentIndex + 1) : ""
+  const tocDirectory = String(tocPath || "").includes("/")
+    ? String(tocPath).slice(0, String(tocPath).lastIndexOf("/"))
+    : ""
+  const decodedPath = decodePathPart(targetPath)
+  const fullPath = normalizeZipPath(
+    decodedPath.startsWith("/")
+      ? decodedPath
+      : `${tocDirectory ? `${tocDirectory}/` : ""}${decodedPath}`,
+  )
+
+  return {
+    fullPath,
+    fragment: decodePathPart(fragment),
+  }
+}
+
+function addFragment(href, targetId) {
+  return targetId ? `${href}#${encodeURIComponent(targetId)}` : href
+}
+
+function getTocSources(epubData) {
+  const items = Array.from(epubData.manifest.values()).filter((item) =>
+    String(item.mediaType || "").toLowerCase() === NCX_MEDIA_TYPE ||
+    hasPropertyToken(item.properties, "nav"),
+  )
+  const preferNav = String(epubData.version || "").startsWith("3")
+  return items.sort((left, right) => {
+    const leftIsPreferred = hasPropertyToken(left.properties, "nav") === preferNav
+    const rightIsPreferred = hasPropertyToken(right.properties, "nav") === preferNav
+    return Number(rightIsPreferred) - Number(leftIsPreferred)
+  })
+}
+
+function flattenNcxPoints(points, level, output) {
+  for (const point of points) {
+    const label = getDirectChild(point, "navLabel")
+    const content = getDirectChild(point, "content")
+    const title = normalizeWhitespace(label?.textContent)
+    const href = content?.getAttribute("src") || ""
+    if (title && href) {
+      output.push({ title, href, level: Math.min(level, 3) })
+    }
+    flattenNcxPoints(getDirectChildren(point, "navPoint"), level + 1, output)
+  }
+}
+
+function flattenNavList(list, level, output) {
+  for (const item of getDirectChildren(list, "li")) {
+    const link = getDirectChild(item, "a")
+    const title = normalizeWhitespace(link?.textContent)
+    const href = link?.getAttribute("href") || ""
+    if (title && href) {
+      output.push({ title, href, level: Math.min(level, 3) })
+    }
+    const nestedList = getDirectChild(item, "ol")
+    if (nestedList) {
+      flattenNavList(nestedList, level + 1, output)
+    }
+  }
+}
+
+export async function extractTocMarkers(epubData) {
+  const chapterFiles = getChapterFiles(epubData)
+  const chaptersByPath = new Map(
+    chapterFiles.map((chapter, chapterIndex) => [normalizeZipPath(chapter.fullPath), {
+      ...chapter,
+      chapterIndex,
+    }]),
+  )
+  const markers = []
+
+  for (const tocItem of getTocSources(epubData)) {
+    if (!tocItem.fullPath || !epubData.zip.file(tocItem.fullPath)) {
+      continue
+    }
+
+    const content = await getFileContent(epubData, tocItem.fullPath)
+    const doc = parseChapterDocument(content)
+    const rawEntries = []
+
+    if (String(tocItem.mediaType || "").toLowerCase() === NCX_MEDIA_TYPE) {
+      const navMap = doc.getElementsByTagNameNS("*", "navMap")[0]
+      flattenNcxPoints(getDirectChildren(navMap, "navPoint"), 1, rawEntries)
+    } else {
+      const navElements = Array.from(doc.getElementsByTagNameNS("*", "nav"))
+      const tocNav = navElements.find((nav) =>
+        String(nav.getAttributeNS(EPUB_NS, "type") || nav.getAttribute("epub:type") || "")
+          .split(/\s+/)
+          .includes("toc"),
+      ) || navElements[0]
+      flattenNavList(getDirectChild(tocNav, "ol"), 1, rawEntries)
+    }
+
+    for (const entry of rawEntries) {
+      const target = resolveTocHref(tocItem.fullPath, entry.href)
+      const chapter = target && chaptersByPath.get(target.fullPath)
+      if (!chapter) {
+        continue
+      }
+
+      markers.push({
+        id: `toc-${markers.length + 1}`,
+        targetId: target.fragment,
+        level: entry.level,
+        title: entry.title,
+        page: "",
+        source: "toc",
+        chapterIndex: chapter.chapterIndex,
+        chapterHref: chapter.href,
+        chapterFullPath: chapter.fullPath,
+        href: addFragment(chapter.href, target.fragment),
+      })
+    }
+
+    if (markers.length > 0) {
+      break
+    }
+  }
+
+  return markers
+}
+
 export async function rebuildToc(epubData) {
   const chapterFiles = getChapterFiles(epubData)
   const flatEntries = []
   let headingsFound = 0
 
-  for (let chapterIndex = 0; chapterIndex < chapterFiles.length; chapterIndex += 1) {
-    const chapter = chapterFiles[chapterIndex]
-    const content = await getFileContent(epubData, chapter.fullPath)
-    const chapterEntries = collectChapterEntries(chapter, chapterIndex, content)
+  if (Array.isArray(epubData.chapterMarkers)) {
+    for (const marker of epubData.chapterMarkers) {
+      flatEntries.push({
+        level: marker.level,
+        title: marker.title,
+        href: marker.href,
+      })
+    }
+    headingsFound = flatEntries.length
+  } else {
+    for (let chapterIndex = 0; chapterIndex < chapterFiles.length; chapterIndex += 1) {
+      const chapter = chapterFiles[chapterIndex]
+      const content = await getFileContent(epubData, chapter.fullPath)
+      const chapterEntries = collectChapterEntries(chapter, chapterIndex, content)
 
-    headingsFound += chapterEntries.headingsFound
-    flatEntries.push(...chapterEntries.entries)
+      headingsFound += chapterEntries.headingsFound
+      flatEntries.push(...chapterEntries.entries)
+    }
   }
 
-  if (flatEntries.length === 0) {
+  if (flatEntries.length === 0 && !Array.isArray(epubData.chapterMarkers)) {
     flatEntries.push({
       level: 1,
       title: "Chapter 1",

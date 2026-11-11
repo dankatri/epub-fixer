@@ -302,9 +302,18 @@ function collectHeadingElements(node, result) {
   }
 }
 
-function getHeadingBoundaryNodes(bodyElement) {
+function getHeadingBoundaryNodes(bodyElement, markerIds = null) {
   const headings = []
-  collectHeadingElements(bodyElement, headings)
+  if (Array.isArray(markerIds)) {
+    for (const id of markerIds) {
+      const marker = bodyElement.ownerDocument.getElementById(id)
+      if (marker && bodyElement.contains(marker)) {
+        headings.push(marker)
+      }
+    }
+  } else {
+    collectHeadingElements(bodyElement, headings)
+  }
   const boundaries = []
   const seen = new Set()
 
@@ -330,8 +339,8 @@ function getHeadingBoundaryNodes(bodyElement) {
   return boundaries
 }
 
-function splitBodyIntoParts(bodyElement) {
-  const boundaries = getHeadingBoundaryNodes(bodyElement)
+function splitBodyIntoParts(bodyElement, markerIds = null) {
+  const boundaries = getHeadingBoundaryNodes(bodyElement, markerIds)
 
   if (boundaries.length <= 1) {
     return []
@@ -486,6 +495,31 @@ function buildSplitDocument(sourceDoc, partNodes) {
   }
 
   return serializeXhtmlDocument(nextDoc)
+}
+
+function collectIds(nodes) {
+  const ids = new Set()
+  const visit = (node) => {
+    if (node.nodeType !== 1) {
+      return
+    }
+    const id = String(node.getAttribute("id") || "").trim()
+    if (id) {
+      ids.add(id)
+    }
+    for (const child of Array.from(node.childNodes || [])) {
+      visit(child)
+    }
+  }
+
+  for (const node of nodes) {
+    visit(node)
+  }
+  return ids
+}
+
+function addFragment(href, targetId) {
+  return targetId ? `${href}#${encodeURIComponent(targetId)}` : href
 }
 
 function parseChapterForWork(content) {
@@ -672,13 +706,20 @@ export async function splitChapters(epubData) {
       continue
     }
 
-    const parts = splitBodyIntoParts(body)
+    const chapterMarkers = Array.isArray(epubData.chapterMarkers)
+      ? epubData.chapterMarkers.filter((marker) => marker.chapterFullPath === fullPath)
+      : null
+    const parts = splitBodyIntoParts(
+      body,
+      chapterMarkers ? chapterMarkers.map((marker) => marker.targetId).filter(Boolean) : null,
+    )
     if (parts.length <= 1) {
       continue
     }
 
     const nextManifestItems = []
     const nextIds = []
+    const partIds = []
 
     for (let index = 0; index < parts.length; index += 1) {
       const partNumber = index + 1
@@ -703,6 +744,7 @@ export async function splitChapters(epubData) {
       })
 
       nextIds.push(nextId)
+      partIds.push(collectIds(parts[index]))
     }
 
     if (nextManifestItems.length <= 1) {
@@ -723,6 +765,19 @@ export async function splitChapters(epubData) {
     replaceManifestItems(epubData, chapter.id, nextManifestItems)
     epubData.manifest.delete(chapter.id)
     splitReplacements.set(chapter.id, nextIds)
+
+    for (const marker of chapterMarkers || []) {
+      const partIndex = marker.targetId
+        ? partIds.findIndex((ids) => ids.has(marker.targetId))
+        : 0
+      if (partIndex < 0) {
+        continue
+      }
+      const replacement = nextManifestItems[partIndex]
+      marker.chapterFullPath = replacement.fullPath
+      marker.chapterHref = replacement.href
+      marker.href = addFragment(replacement.href, marker.targetId)
+    }
 
     if (fullPath !== nextManifestItems[0].fullPath) {
       epubData.zip.remove(fullPath)
@@ -757,6 +812,18 @@ export async function splitChapters(epubData) {
 
     epubData.spine = nextSpine
     rewriteSpineElement(epubData)
+
+    if (Array.isArray(epubData.chapterMarkers)) {
+      const chapterIndexByPath = new Map(
+        getChapterFiles(epubData).map((chapter, index) => [chapter.fullPath, index]),
+      )
+      for (const marker of epubData.chapterMarkers) {
+        const chapterIndex = chapterIndexByPath.get(marker.chapterFullPath)
+        if (chapterIndex !== undefined) {
+          marker.chapterIndex = chapterIndex
+        }
+      }
+    }
   }
 
   return {
@@ -924,6 +991,28 @@ export async function mergeChapters(epubData) {
 
   epubData.spine = nextSpine
   rewriteSpineElement(epubData)
+
+  if (Array.isArray(epubData.chapterMarkers)) {
+    const mergedPaths = new Set(parsedChapters.map((entry) => entry.chapter.fullPath))
+    for (const marker of epubData.chapterMarkers) {
+      if (!mergedPaths.has(marker.chapterFullPath)) {
+        continue
+      }
+      marker.chapterFullPath = outputFile
+      marker.chapterHref = mergedHref
+      marker.href = addFragment(mergedHref, marker.targetId)
+    }
+
+    const chapterIndexByPath = new Map(
+      getChapterFiles(epubData).map((chapter, index) => [chapter.fullPath, index]),
+    )
+    for (const marker of epubData.chapterMarkers) {
+      const chapterIndex = chapterIndexByPath.get(marker.chapterFullPath)
+      if (chapterIndex !== undefined) {
+        marker.chapterIndex = chapterIndex
+      }
+    }
+  }
 
   return {
     mergedCount: parsedChapters.length,

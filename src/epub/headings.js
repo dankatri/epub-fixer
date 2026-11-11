@@ -68,6 +68,127 @@ export function collectHeadingElements(doc) {
   return result
 }
 
+function getStyledTitleCandidates(doc, styledClasses) {
+  const selector = "b, strong, font[size], [class], [style]"
+  const candidates = Array.from(doc.querySelectorAll(selector))
+  const blocks = []
+  const seenBlocks = new WeakSet()
+
+  for (const element of candidates) {
+    const title = normalizeWhitespace(element.textContent)
+    if (!title || title.length > 160) {
+      continue
+    }
+
+    const classNames = String(element.getAttribute("class") || "")
+    const classTokens = classNames.split(/\s+/)
+    const style = String(element.getAttribute("style") || "")
+    const hasTitleStyle =
+      ["b", "strong"].includes(String(element.localName).toLowerCase()) ||
+      (String(element.localName).toLowerCase() === "font" && element.hasAttribute("size")) ||
+      /\b(bold|heading|title|chapter)\b/i.test(classNames) ||
+      classTokens.some((name) => styledClasses.has(name)) ||
+      /font-weight\s*:\s*(bold|[6-9]00)/i.test(style) ||
+      /font-size\s*:\s*(?:larger|large|x-large|xx-large|(?:1\.[1-9]\d*|[2-9]\d*)\s*(?:em|rem)|(?:1[2-9]\d|[2-9]\d{2,})\s*%)/i.test(style)
+    if (!hasTitleStyle) {
+      continue
+    }
+
+    let block = element
+    while (block && !["p", "div", "section", "article", "li", "td"].includes(
+      String(block.localName || "").toLowerCase(),
+    )) {
+      block = block.parentElement
+    }
+
+    if (
+      block &&
+      normalizeWhitespace(block.textContent) === title &&
+      !seenBlocks.has(block) &&
+      !Array.from(element.querySelectorAll("b, strong, [class~='bold']"))
+        .some((child) => normalizeWhitespace(child.textContent) === title)
+    ) {
+      seenBlocks.add(block)
+      blocks.push({ element, block, title })
+    }
+  }
+
+  return blocks
+}
+
+async function getStyledClasses(epubData) {
+  const styledClasses = new Set()
+  const stylesheetItems = Array.from(epubData.manifest.values()).filter(
+    (item) => String(item.mediaType || "").toLowerCase() === "text/css",
+  )
+
+  for (const item of stylesheetItems) {
+    const css = await getFileContent(epubData, item.fullPath)
+    for (const match of css.matchAll(/\.([a-zA-Z_][\w-]*)[^{}]*\{([^{}]*)\}/g)) {
+      const declarations = match[2]
+      if (
+        /font-weight\s*:\s*(bold|[6-9]00)/i.test(declarations) ||
+        /font-size\s*:\s*(?:larger|large|x-large|xx-large|(?:1\.[1-9]\d*|[2-9]\d*)\s*(?:em|rem)|(?:1[2-9]\d|[2-9]\d{2,})\s*%)/i.test(declarations)
+      ) {
+        styledClasses.add(match[1])
+      }
+    }
+  }
+
+  return styledClasses
+}
+
+export async function extractStyledTitleMarkers(epubData) {
+  const chapterFiles = getChapterFiles(epubData)
+  const chapters = []
+  const styledClasses = await getStyledClasses(epubData)
+
+  for (let chapterIndex = 0; chapterIndex < chapterFiles.length; chapterIndex += 1) {
+    const chapter = chapterFiles[chapterIndex]
+    const content = await getFileContent(epubData, chapter.fullPath)
+    const doc = parseChapterDocument(content)
+    const headings = []
+    const seenIds = new Set()
+
+    for (const candidate of getStyledTitleCandidates(doc, styledClasses)) {
+      const target = candidate.block.hasAttribute("id")
+        ? candidate.block
+        : candidate.element
+      const id = ensureHeadingId(target)
+      if (seenIds.has(id)) {
+        continue
+      }
+      seenIds.add(id)
+
+      headings.push({
+        id: `styled-${chapterIndex}-${headings.length + 1}`,
+        targetId: id,
+        level: 1,
+        title: candidate.title,
+        page: "",
+        source: "styled",
+        chapterIndex,
+        chapterHref: chapter.href,
+        chapterFullPath: chapter.fullPath,
+        href: `${chapter.href}#${id}`,
+      })
+    }
+
+    if (headings.length > 0) {
+      setFileContent(epubData, chapter.fullPath, serializeDocument(doc))
+    }
+
+    chapters.push({
+      chapterIndex,
+      chapterHref: chapter.href,
+      chapterFullPath: chapter.fullPath,
+      headings,
+    })
+  }
+
+  return chapters
+}
+
 function getHeadingLevel(element) {
   const tagName = String(element.localName || element.nodeName || "").toLowerCase()
   return Number(tagName.slice(1))
@@ -171,7 +292,7 @@ export async function extractHeadings(epubData) {
       const wordsBefore = countWordsBeforeNode(doc, el)
       const page = Math.max(1, Math.ceil((cumulativeWords + wordsBefore) / WORDS_PER_PAGE))
 
-      headings.push({ level, title, id, page })
+      headings.push({ level, title, id, page, source: "html" })
     }
 
     // Count total words in this chapter file for cumulative tracking
@@ -193,6 +314,61 @@ export async function extractHeadings(epubData) {
   }
 
   return chapters
+}
+
+export function renameChapterMarker(epubData, markerId, newTitle) {
+  const marker = epubData.chapterMarkers?.find((item) => item.id === markerId)
+  if (!marker) {
+    throw new Error(`Chapter marker "${markerId}" not found`)
+  }
+  marker.title = newTitle
+}
+
+export function deleteChapterMarker(epubData, markerId) {
+  const markers = epubData.chapterMarkers || []
+  const index = markers.findIndex((item) => item.id === markerId)
+  if (index < 0) {
+    throw new Error(`Chapter marker "${markerId}" not found`)
+  }
+  markers.splice(index, 1)
+}
+
+export function changeChapterMarkerLevel(epubData, markerId, newLevel) {
+  if (!Number.isInteger(newLevel) || newLevel < 1 || newLevel > 3) {
+    throw new Error(`Invalid heading level: ${newLevel}`)
+  }
+  const marker = epubData.chapterMarkers?.find((item) => item.id === markerId)
+  if (!marker) {
+    throw new Error(`Chapter marker "${markerId}" not found`)
+  }
+  marker.level = newLevel
+}
+
+export function changeChapterMarkerLevels(epubData, updates) {
+  for (const update of updates) {
+    changeChapterMarkerLevel(epubData, update.headingId, update.newLevel)
+  }
+}
+
+export function reorderChapterMarkers(epubData, chapterFullPath, newOrder) {
+  const markers = epubData.chapterMarkers || []
+  const chapterMarkers = markers.filter((marker) => marker.chapterFullPath === chapterFullPath)
+  const markerById = new Map(chapterMarkers.map((marker) => [marker.id, marker]))
+  const reordered = newOrder.map((id) => markerById.get(id)).filter(Boolean)
+
+  for (const marker of chapterMarkers) {
+    if (!newOrder.includes(marker.id)) {
+      reordered.push(marker)
+    }
+  }
+
+  let nextIndex = 0
+  for (let index = 0; index < markers.length; index += 1) {
+    if (markers[index].chapterFullPath === chapterFullPath) {
+      markers[index] = reordered[nextIndex]
+      nextIndex += 1
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

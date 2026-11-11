@@ -5,9 +5,8 @@ const DEFAULT_LIMIT = 50
 /**
  * Snapshot-based undo stack for heading edits.
  *
- * Every heading mutation rewrites one or more chapter XHTML files, so a
- * snapshot of those files taken before the edit is enough to restore the
- * previous state exactly — including elements that were deleted outright.
+ * Heading edits snapshot their XHTML files; imported TOC edits snapshot the
+ * virtual marker list. Each snapshot restores the corresponding state exactly.
  */
 export function createHistory(limit = DEFAULT_LIMIT) {
   const stack = []
@@ -46,7 +45,24 @@ export function createHistory(limit = DEFAULT_LIMIT) {
         entries.push({ fullPath, content: await getFileContent(epubData, fullPath) })
       }
 
-      stack.push({ label, entries })
+      stack.push({ label, entries, chapterMarkers: null })
+
+      while (stack.length > limit) {
+        stack.shift()
+      }
+
+      notify()
+    },
+
+    /** Record the current virtual chapter markers before an edit is applied. */
+    captureMarkers(epubData, label) {
+      stack.push({
+        label,
+        entries: [],
+        chapterMarkers: Array.isArray(epubData.chapterMarkers)
+          ? epubData.chapterMarkers.map((marker) => ({ ...marker }))
+          : null,
+      })
 
       while (stack.length > limit) {
         stack.shift()
@@ -65,6 +81,9 @@ export function createHistory(limit = DEFAULT_LIMIT) {
 
       for (const { fullPath, content } of snapshot.entries) {
         setFileContent(epubData, fullPath, content)
+      }
+      if (snapshot.chapterMarkers) {
+        epubData.chapterMarkers = snapshot.chapterMarkers.map((marker) => ({ ...marker }))
       }
 
       notify()

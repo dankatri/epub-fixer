@@ -43,6 +43,7 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
     draggable: "true",
     "data-heading-id": heading.id,
     "data-chapter": chapterFullPath,
+    "data-source": heading.source || "html",
     "data-level": String(heading.level),
   })
 
@@ -70,7 +71,11 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
 
   badge.addEventListener("click", () => {
     const nextLevel = (heading.level % 3) + 1
-    callbacks.onChangeLevel(chapterFullPath, heading.id, nextLevel, heading.title)
+    if (heading.source === "toc" || heading.source === "styled") {
+      callbacks.onMarkerChangeLevel(heading.id, nextLevel, heading.title)
+    } else {
+      callbacks.onChangeLevel(chapterFullPath, heading.id, nextLevel, heading.title)
+    }
   })
 
   // Title (editable)
@@ -83,7 +88,11 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
   titleEl.addEventListener("blur", () => {
     const newTitle = titleEl.textContent.trim()
     if (newTitle && newTitle !== heading.title) {
-      callbacks.onRename(chapterFullPath, heading.id, newTitle, heading.title)
+      if (heading.source === "toc" || heading.source === "styled") {
+        callbacks.onMarkerRename(heading.id, newTitle, heading.title)
+      } else {
+        callbacks.onRename(chapterFullPath, heading.id, newTitle, heading.title)
+      }
     } else if (!newTitle) {
       titleEl.textContent = heading.title
     }
@@ -105,7 +114,13 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
     ? createIconButton(
         "Promote heading level",
         '<polyline points="18 15 12 9 6 15"/>',
-        () => callbacks.onChangeLevel(chapterFullPath, heading.id, heading.level - 1, heading.title),
+        () => {
+          if (heading.source === "toc" || heading.source === "styled") {
+            callbacks.onMarkerChangeLevel(heading.id, heading.level - 1, heading.title)
+          } else {
+            callbacks.onChangeLevel(chapterFullPath, heading.id, heading.level - 1, heading.title)
+          }
+        },
         "ch-level-up",
       )
     : null
@@ -115,7 +130,13 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
     ? createIconButton(
         "Demote heading level",
         '<polyline points="6 9 12 15 18 9"/>',
-        () => callbacks.onChangeLevel(chapterFullPath, heading.id, heading.level + 1, heading.title),
+        () => {
+          if (heading.source === "toc" || heading.source === "styled") {
+            callbacks.onMarkerChangeLevel(heading.id, heading.level + 1, heading.title)
+          } else {
+            callbacks.onChangeLevel(chapterFullPath, heading.id, heading.level + 1, heading.title)
+          }
+        },
         "ch-level-down",
       )
     : null
@@ -124,7 +145,13 @@ function buildHeadingRow(heading, chapterFullPath, callbacks) {
   const deleteBtn = createIconButton(
     "Delete heading",
     '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
-    () => callbacks.onDelete(chapterFullPath, heading.id, heading.title),
+    () => {
+      if (heading.source === "toc" || heading.source === "styled") {
+        callbacks.onMarkerDelete(heading.id, heading.title)
+      } else {
+        callbacks.onDelete(chapterFullPath, heading.id, heading.title)
+      }
+    },
     "ch-delete",
   )
 
@@ -219,7 +246,11 @@ function setupDragAndDrop(container, callbacks) {
       (r) => r.dataset.headingId,
     )
 
-    callbacks.onReorder(chapterFullPath, newOrder)
+    if (draggedRow.dataset.source === "toc" || draggedRow.dataset.source === "styled") {
+      callbacks.onMarkerReorder(chapterFullPath, newOrder)
+    } else {
+      callbacks.onReorder(chapterFullPath, newOrder)
+    }
 
     for (const el of container.querySelectorAll(".ch-drag-over")) {
       el.classList.remove("ch-drag-over")
@@ -248,6 +279,7 @@ function buildBulkToolbar(container, callbacks) {
         chapterFullPath: row.dataset.chapter,
         headingId: row.dataset.headingId,
         newLevel: level,
+        source: row.dataset.source,
       }))
       if (updates.length > 0) {
         callbacks.onBulkChangeLevel(updates)

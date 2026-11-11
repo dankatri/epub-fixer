@@ -13,6 +13,12 @@ import {
   changeHeadingLevel,
   changeHeadingLevels,
   reorderHeadings,
+  renameChapterMarker,
+  deleteChapterMarker,
+  changeChapterMarkerLevel,
+  changeChapterMarkerLevels,
+  reorderChapterMarkers,
+  extractStyledTitleMarkers,
 } from "./epub/headings.js"
 import {
   reorderChapters,
@@ -20,7 +26,7 @@ import {
   splitChapters,
   mergeChapters,
 } from "./epub/chapters.js"
-import { rebuildToc } from "./epub/toc.js"
+import { extractTocMarkers, rebuildToc } from "./epub/toc.js"
 import { replaceCover } from "./epub/cover.js"
 import { removeStrings } from "./epub/strings.js"
 import { createHistory } from "./epub/history.js"
@@ -77,7 +83,28 @@ async function cloneEpubData(source) {
   })
   const clone = await readEpub(blob)
   clone.originalFilename = source.originalFilename
+  if (Array.isArray(source.chapterMarkers)) {
+    clone.chapterMarkers = source.chapterMarkers.map((marker) => ({ ...marker }))
+  }
   return clone
+}
+
+function groupChapterMarkers(markers, chapterFiles) {
+  const chapters = chapterFiles.map((chapter, chapterIndex) => ({
+    chapterIndex,
+    chapterHref: chapter.href,
+    chapterFullPath: chapter.fullPath,
+    headings: [],
+  }))
+
+  for (const marker of markers) {
+    const chapter = chapters[marker.chapterIndex]
+    if (chapter) {
+      chapter.headings.push(marker)
+    }
+  }
+
+  return chapters
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -117,7 +144,9 @@ document.addEventListener("DOMContentLoaded", () => {
   async function refreshHeadingsPanel() {
     if (!epubData) return
     try {
-      const chapters = await extractHeadings(epubData)
+      const chapters = Array.isArray(epubData.chapterMarkers)
+        ? groupChapterMarkers(epubData.chapterMarkers, getChapterFiles(epubData))
+        : await extractHeadings(epubData)
       renderChapterHeadings(chapterHeadingsList, chapters, headingCallbacks)
     } catch (error) {
       log(`Failed to refresh headings: ${getErrorMessage(error)}`, "warn")
@@ -157,6 +186,22 @@ document.addEventListener("DOMContentLoaded", () => {
     await refreshHeadingsPanel()
   }
 
+  async function runMarkerEdit({ label, apply, success, failure }) {
+    if (!epubData) return
+
+    try {
+      headingHistory.captureMarkers(epubData, label)
+      apply()
+      log(success)
+      markHeadingsEdited()
+    } catch (error) {
+      headingHistory.undo(epubData)
+      log(`${failure}: ${getErrorMessage(error)}`, "error")
+    }
+
+    await refreshHeadingsPanel()
+  }
+
   async function handleUndoClick() {
     if (!epubData || !headingHistory.canUndo) {
       return
@@ -169,6 +214,38 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const headingCallbacks = {
+    async onMarkerRename(markerId, newTitle, oldTitle) {
+      await runMarkerEdit({
+        label: `rename of "${oldTitle || newTitle}"`,
+        apply: () => renameChapterMarker(epubData, markerId, newTitle),
+        success: `Renamed chapter marker: "${newTitle}"`,
+        failure: "Rename failed",
+      })
+    },
+    async onMarkerDelete(markerId, title) {
+      await runMarkerEdit({
+        label: title ? `deletion of "${title}"` : "chapter marker deletion",
+        apply: () => deleteChapterMarker(epubData, markerId),
+        success: title ? `Deleted chapter marker: "${title}"` : "Deleted chapter marker",
+        failure: "Delete failed",
+      })
+    },
+    async onMarkerChangeLevel(markerId, newLevel, title) {
+      await runMarkerEdit({
+        label: title ? `level change of "${title}"` : "chapter marker level change",
+        apply: () => changeChapterMarkerLevel(epubData, markerId, newLevel),
+        success: `Changed chapter marker level to H${newLevel}`,
+        failure: "Level change failed",
+      })
+    },
+    async onMarkerReorder(chapterFullPath, newOrder) {
+      await runMarkerEdit({
+        label: "chapter marker reorder",
+        apply: () => reorderChapterMarkers(epubData, chapterFullPath, newOrder),
+        success: "Reordered chapter markers",
+        failure: "Reorder failed",
+      })
+    },
     async onRename(chapterFullPath, headingId, newTitle, oldTitle) {
       await runHeadingEdit({
         paths: [chapterFullPath],
@@ -199,6 +276,15 @@ document.addEventListener("DOMContentLoaded", () => {
     async onBulkChangeLevel(updates) {
       const count = updates.length
       const newLevel = updates[0].newLevel
+      if (updates.every((update) => update.source === "toc" || update.source === "styled")) {
+        await runMarkerEdit({
+          label: `level change of ${count} chapter marker${count === 1 ? "" : "s"}`,
+          apply: () => changeChapterMarkerLevels(epubData, updates),
+          success: `Changed ${count} chapter marker${count === 1 ? "" : "s"} to H${newLevel}`,
+          failure: "Bulk level change failed",
+        })
+        return
+      }
       await runHeadingEdit({
         paths: updates.map((update) => update.chapterFullPath),
         label: `level change of ${count} heading${count === 1 ? "" : "s"}`,
@@ -284,11 +370,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Extract and display chapter headings
       try {
-        const chapters = await extractHeadings(loadedEpub)
+        let chapters = await extractHeadings(loadedEpub)
+        const headingCount = chapters.reduce((sum, ch) => sum + ch.headings.length, 0)
+        const tocMarkers = await extractTocMarkers(loadedEpub)
+
+        if (tocMarkers.length > headingCount) {
+          loadedEpub.chapterMarkers = tocMarkers
+          chapters = groupChapterMarkers(tocMarkers, chapterFiles)
+        } else if (headingCount === 0) {
+          chapters = await extractStyledTitleMarkers(loadedEpub)
+          loadedEpub.chapterMarkers = chapters.flatMap((chapter) => chapter.headings)
+        }
+
         renderChapterHeadings(chapterHeadingsList, chapters, headingCallbacks)
         chapterHeadingsSection.hidden = false
         const totalHeadings = chapters.reduce((sum, ch) => sum + ch.headings.length, 0)
-        log(`Headings found: ${totalHeadings}`)
+        log(`Chapter markers found: ${totalHeadings}`)
       } catch (headingError) {
         log(`Could not extract headings: ${getErrorMessage(headingError)}`, "warn")
       }
@@ -386,7 +483,7 @@ document.addEventListener("DOMContentLoaded", () => {
         log("Rebuilding table of contents...")
         try {
           const result = await rebuildToc(working)
-          log(`TOC rebuilt with ${result.headingsFound} headings and ${result.navPoints} entries`, "success")
+          log(`TOC rebuilt with ${result.headingsFound} chapter markers and ${result.navPoints} entries`, "success")
         } catch (error) {
           log(`TOC rebuild failed: ${getErrorMessage(error)}`, "error")
         }
