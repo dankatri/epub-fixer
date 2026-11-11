@@ -1,9 +1,13 @@
 import { initDropzone } from "./ui/dropzone.js"
 import { initOptions, getOptions } from "./ui/options.js"
 import { clearLog, log } from "./ui/log.js"
-import { renderChapterHeadings, clearChapterHeadings } from "./ui/chapter-headings.js"
+import {
+  renderChapterHeadings,
+  clearChapterHeadings,
+  renderSplitPreview,
+} from "./ui/chapter-headings.js"
 
-import { readEpub, getChapterFiles } from "./epub/reader.js"
+import { readEpub, cloneEpubData, getChapterFiles } from "./epub/reader.js"
 import { convertPdfToEpub } from "./pdf/convert.js"
 import { writeEpub } from "./epub/writer.js"
 import {
@@ -30,6 +34,7 @@ import { extractTocMarkers, rebuildToc } from "./epub/toc.js"
 import { replaceCover } from "./epub/cover.js"
 import { removeStrings } from "./epub/strings.js"
 import { createHistory } from "./epub/history.js"
+import { createSplitPreview } from "./epub/split-preview.js"
 
 let epubData = null
 let fixedEpub = null
@@ -76,19 +81,6 @@ function buildFixedFilename(rawName, fallbackBase) {
   return `${base}.epub`
 }
 
-async function cloneEpubData(source) {
-  const blob = await source.zip.generateAsync({
-    type: "blob",
-    mimeType: "application/epub+zip",
-  })
-  const clone = await readEpub(blob)
-  clone.originalFilename = source.originalFilename
-  if (Array.isArray(source.chapterMarkers)) {
-    clone.chapterMarkers = source.chapterMarkers.map((marker) => ({ ...marker }))
-  }
-  return clone
-}
-
 function groupChapterMarkers(markers, chapterFiles) {
   const chapters = chapterFiles.map((chapter, chapterIndex) => ({
     chapterIndex,
@@ -116,8 +108,18 @@ document.addEventListener("DOMContentLoaded", () => {
   const chapterHeadingsList = getElement("chapter-headings-list")
   const undoButton = getElement("headings-undo-btn")
   const rebuildTocCheckbox = getElement("opt-rebuild-toc")
+  const splitCheckbox = getElement("opt-split")
+  const mergeCheckbox = getElement("opt-merge")
+  const splitPreview = getElement("split-preview")
+  const splitPreviewSummary = getElement("split-preview-summary")
+  const splitPreviewWarning = getElement("split-preview-warning")
+  const splitPreviewList = getElement("split-preview-list")
+  const currentMarkersLabel = getElement("current-markers-label")
   const filenameInput = getElement("opt-filename")
   const processButtonLabel = processButton.querySelector(".btn-label")
+  let splitPreviewRequest = 0
+  let fileSelectionRequest = 0
+  let headingsReady = false
 
   function setProcessLabel(text) {
     if (processButtonLabel) {
@@ -141,15 +143,102 @@ document.addEventListener("DOMContentLoaded", () => {
     markFixStale()
   }
 
+  function hideSplitPreview() {
+    splitPreviewRequest += 1
+    splitPreview.hidden = true
+    currentMarkersLabel.hidden = true
+    splitPreviewList.textContent = ""
+    splitPreview.removeAttribute("aria-busy")
+  }
+
+  function invalidateSplitPreview() {
+    splitPreviewRequest += 1
+    if (!splitPreview.hidden && splitCheckbox.checked && !mergeCheckbox.checked) {
+      splitPreviewSummary.textContent = "Updating split preview..."
+      splitPreviewWarning.hidden = true
+      splitPreviewList.textContent = ""
+      splitPreview.setAttribute("aria-busy", "true")
+    }
+  }
+
+  async function refreshSplitPreview() {
+    const request = ++splitPreviewRequest
+    const source = epubData
+    if (!source || !splitCheckbox.checked) {
+      splitPreview.hidden = true
+      currentMarkersLabel.hidden = true
+      splitPreviewList.textContent = ""
+      splitPreview.removeAttribute("aria-busy")
+      return
+    }
+
+    splitPreview.hidden = false
+    currentMarkersLabel.hidden = false
+    splitPreviewList.textContent = ""
+    splitPreviewWarning.hidden = true
+
+    if (mergeCheckbox.checked) {
+      splitPreviewSummary.textContent =
+        "Split and merge cannot both run. Both operations will be skipped."
+      splitPreview.removeAttribute("aria-busy")
+      return
+    }
+
+    if (!headingsReady) {
+      splitPreviewSummary.textContent = "Preparing chapter markers..."
+      splitPreview.setAttribute("aria-busy", "true")
+      return
+    }
+
+    splitPreviewSummary.textContent = "Calculating split preview..."
+    splitPreview.setAttribute("aria-busy", "true")
+
+    try {
+      const preview = await createSplitPreview(source)
+      if (request !== splitPreviewRequest || source !== epubData) {
+        return
+      }
+
+      splitPreviewSummary.textContent = preview.resultFiles === preview.originalFiles
+        ? `No files would split. ${preview.originalFiles} chapter files would remain.`
+        : `${preview.originalFiles} → ${preview.resultFiles} chapter files. Nothing changes until you fix the EPUB.`
+
+      if (preview.unresolvedMarkers.length > 0) {
+        const count = preview.unresolvedMarkers.length
+        splitPreviewWarning.textContent =
+          `${count} chapter marker${count === 1 ? "" : "s"} would still point to a removed file.`
+        splitPreviewWarning.hidden = false
+      }
+
+      renderSplitPreview(splitPreviewList, preview.chapters)
+    } catch (error) {
+      if (request === splitPreviewRequest && source === epubData) {
+        splitPreviewSummary.textContent = `Could not calculate split preview: ${getErrorMessage(error)}`
+      }
+    } finally {
+      if (request === splitPreviewRequest && source === epubData) {
+        splitPreview.removeAttribute("aria-busy")
+      }
+    }
+  }
+
   async function refreshHeadingsPanel() {
     if (!epubData) return
+    const source = epubData
     try {
-      const chapters = Array.isArray(epubData.chapterMarkers)
-        ? groupChapterMarkers(epubData.chapterMarkers, getChapterFiles(epubData))
-        : await extractHeadings(epubData)
+      const chapters = Array.isArray(source.chapterMarkers)
+        ? groupChapterMarkers(source.chapterMarkers, getChapterFiles(source))
+        : await extractHeadings(source)
+      if (source !== epubData) return
       renderChapterHeadings(chapterHeadingsList, chapters, headingCallbacks)
     } catch (error) {
-      log(`Failed to refresh headings: ${getErrorMessage(error)}`, "warn")
+      if (source === epubData) {
+        log(`Failed to refresh headings: ${getErrorMessage(error)}`, "warn")
+      }
+    } finally {
+      if (source === epubData) {
+        void refreshSplitPreview()
+      }
     }
   }
 
@@ -169,6 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function runHeadingEdit({ paths, label, apply, success, failure }) {
     if (!epubData) return
 
+    invalidateSplitPreview()
     let captured = false
     try {
       await headingHistory.capture(epubData, paths, label)
@@ -189,6 +279,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function runMarkerEdit({ label, apply, success, failure }) {
     if (!epubData) return
 
+    invalidateSplitPreview()
     try {
       headingHistory.captureMarkers(epubData, label)
       apply()
@@ -207,6 +298,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return
     }
 
+    invalidateSplitPreview()
     const label = headingHistory.undo(epubData)
     log(`Undid ${label}`)
     markHeadingsEdited()
@@ -305,6 +397,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function resetUiState() {
+    headingsReady = false
+    hideSplitPreview()
     epubData = null
     fixedEpub = null
     optionsSection.hidden = true
@@ -316,16 +410,19 @@ document.addEventListener("DOMContentLoaded", () => {
     filenameInput.value = ""
     chapterHeadingsSection.hidden = true
     headingHistory.clear()
-    clearChapterHeadings(chapterHeadingsList)
+    renderChapterHeadings(chapterHeadingsList, [], headingCallbacks)
   }
 
   async function onFileSelected(file) {
+    const request = ++fileSelectionRequest
     if (!file) {
       clearLog()
       resetUiState()
       return
     }
 
+    headingsReady = false
+    hideSplitPreview()
     clearLog()
 
     const isPdf =
@@ -338,6 +435,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (isPdf) {
         log(`Converting PDF to EPUB: ${file.name}`)
         const epubBlob = await convertPdfToEpub(file, (message) => log(message))
+        if (request !== fileSelectionRequest) return
         sourceFile = epubBlob
         originalFilename = file.name.replace(/\.pdf$/i, ".epub")
         log("PDF converted to EPUB", "success")
@@ -346,6 +444,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const loadedEpub = await readEpub(sourceFile)
+      if (request !== fileSelectionRequest) return
       loadedEpub.originalFilename = originalFilename
       epubData = loadedEpub
       fixedEpub = null
@@ -382,14 +481,24 @@ document.addEventListener("DOMContentLoaded", () => {
           loadedEpub.chapterMarkers = chapters.flatMap((chapter) => chapter.headings)
         }
 
+        if (request !== fileSelectionRequest) return
         renderChapterHeadings(chapterHeadingsList, chapters, headingCallbacks)
         chapterHeadingsSection.hidden = false
+        headingsReady = true
+        void refreshSplitPreview()
         const totalHeadings = chapters.reduce((sum, ch) => sum + ch.headings.length, 0)
         log(`Chapter markers found: ${totalHeadings}`)
       } catch (headingError) {
-        log(`Could not extract headings: ${getErrorMessage(headingError)}`, "warn")
+        if (request === fileSelectionRequest) {
+          log(`Could not extract headings: ${getErrorMessage(headingError)}`, "warn")
+          clearChapterHeadings(chapterHeadingsList)
+          chapterHeadingsSection.hidden = false
+          headingsReady = true
+          void refreshSplitPreview()
+        }
       }
     } catch (error) {
+      if (request !== fileSelectionRequest) return
       log(getErrorMessage(error), "error")
       resetUiState()
     }
@@ -553,6 +662,8 @@ document.addEventListener("DOMContentLoaded", () => {
   processButton.addEventListener("click", handleProcessClick)
   downloadButton.addEventListener("click", handleDownloadClick)
   undoButton.addEventListener("click", handleUndoClick)
+  splitCheckbox.addEventListener("change", () => { void refreshSplitPreview() })
+  mergeCheckbox.addEventListener("change", () => { void refreshSplitPreview() })
 
   // Ctrl/Cmd+Z undoes the last heading edit, unless the user is typing — the
   // heading titles are contenteditable and own their native undo behaviour.

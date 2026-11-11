@@ -507,14 +507,16 @@ function getFallbackHref(epubData) {
 }
 
 function getDirectChild(element, localName) {
+  const expectedName = String(localName || "").toLowerCase()
   return Array.from(element?.children || []).find(
-    (child) => String(child.localName || "").toLowerCase() === localName,
+    (child) => String(child.localName || "").toLowerCase() === expectedName,
   ) || null
 }
 
 function getDirectChildren(element, localName) {
+  const expectedName = String(localName || "").toLowerCase()
   return Array.from(element?.children || []).filter(
-    (child) => String(child.localName || "").toLowerCase() === localName,
+    (child) => String(child.localName || "").toLowerCase() === expectedName,
   )
 }
 

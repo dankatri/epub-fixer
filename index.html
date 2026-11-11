@@ -130,6 +130,16 @@
             </button>
           </h2>
           <p class="ch-help">Edit headings or the EPUB table of contents. Chapter markers can also be used to split content at their linked locations.</p>
+          <div id="split-preview" class="split-preview" role="region" aria-labelledby="split-preview-title" hidden>
+            <div class="split-preview-header">
+              <h3 id="split-preview-title">Split preview</h3>
+              <span class="split-preview-readonly">Read only</span>
+            </div>
+            <p id="split-preview-summary" class="split-preview-summary" role="status" aria-live="polite"></p>
+            <p id="split-preview-warning" class="split-preview-warning" hidden></p>
+            <div id="split-preview-list" class="split-preview-list" tabindex="0" aria-label="Projected chapter files"></div>
+          </div>
+          <p id="current-markers-label" class="current-markers-label" hidden>Current chapter markers · editable</p>
           <div id="chapter-headings-list"></div>
         </section>
       </div>

@@ -203,6 +203,19 @@ export async function readEpub(file) {
   }
 }
 
+export async function cloneEpubData(source) {
+  const blob = await source.zip.generateAsync({
+    type: "blob",
+    mimeType: "application/epub+zip",
+  })
+  const clone = await readEpub(blob)
+  clone.originalFilename = source.originalFilename
+  if (Array.isArray(source.chapterMarkers)) {
+    clone.chapterMarkers = source.chapterMarkers.map((marker) => ({ ...marker }))
+  }
+  return clone
+}
+
 export function getChapterFiles(epubData) {
   const chapters = []
 

@@ -376,3 +376,50 @@ export function renderChapterHeadings(container, chapters, callbacks) {
 export function clearChapterHeadings(container) {
   container.textContent = ""
 }
+
+export function renderSplitPreview(container, chapters) {
+  container.textContent = ""
+
+  if (chapters.length === 0) {
+    container.appendChild(createElement("p", { className: "split-preview-empty" }, [
+      "No chapter files found.",
+    ]))
+    return
+  }
+
+  const files = createElement("ol", { className: "split-preview-files" })
+  for (const chapter of chapters) {
+    const file = createElement("li", { className: "split-preview-file" })
+    const fileHeader = createElement("div", { className: "split-preview-file-header" })
+    fileHeader.appendChild(createElement("span", {
+      className: "split-preview-filename",
+      title: chapter.chapterHref,
+    }, [chapter.chapterHref]))
+    fileHeader.appendChild(createElement("span", {
+      className: chapter.isNewFile ? "split-preview-file-badge is-new" : "split-preview-file-badge",
+    }, [chapter.isNewFile ? "New file" : "Unchanged"]))
+    file.appendChild(fileHeader)
+
+    if (chapter.headings.length === 0) {
+      file.appendChild(createElement("p", { className: "split-preview-empty" }, [
+        "No chapter markers in this file.",
+      ]))
+    } else {
+      const headings = createElement("ul", { className: "split-preview-markers" })
+      for (const heading of chapter.headings) {
+        const row = createElement("li", { className: "split-preview-marker" })
+        row.appendChild(createElement("span", { className: "split-preview-level" }, [
+          LEVEL_LABELS[heading.level] || "H?",
+        ]))
+        row.appendChild(createElement("span", { className: "split-preview-title" }, [
+          heading.title,
+        ]))
+        headings.appendChild(row)
+      }
+      file.appendChild(headings)
+    }
+
+    files.appendChild(file)
+  }
+  container.appendChild(files)
+}

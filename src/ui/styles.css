@@ -1040,6 +1040,131 @@ textarea {
   line-height: 1.45;
 }
 
+.split-preview {
+  margin-bottom: 1rem;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--c-bg);
+  overflow: hidden;
+}
+
+.split-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem 0.25rem;
+}
+
+.split-preview-header h3 {
+  margin: 0;
+  color: var(--c-text-1);
+  font-size: 0.8125rem;
+}
+
+.split-preview-readonly,
+.split-preview-file-badge,
+.split-preview-level {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+}
+
+.split-preview-readonly,
+.split-preview-file-badge {
+  color: var(--c-text-3);
+}
+
+.split-preview-summary,
+.split-preview-warning {
+  margin: 0;
+  padding: 0.25rem 0.875rem 0.75rem;
+  color: var(--c-text-2);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.split-preview-warning {
+  color: var(--c-warn);
+}
+
+.split-preview-list {
+  max-height: 22rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.split-preview-files,
+.split-preview-markers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.split-preview-file {
+  padding: 0.625rem 0.875rem;
+  border-top: 1px solid var(--c-border);
+}
+
+.split-preview-file-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.split-preview-filename {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--c-text-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.split-preview-file-badge {
+  flex-shrink: 0;
+}
+
+.split-preview-file-badge.is-new {
+  color: var(--c-primary);
+}
+
+.split-preview-marker {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding-top: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--c-text-1);
+}
+
+.split-preview-level {
+  flex-shrink: 0;
+  color: var(--c-primary);
+}
+
+.split-preview-title {
+  overflow-wrap: anywhere;
+}
+
+.split-preview-empty {
+  margin: 0;
+  padding-top: 0.35rem;
+  color: var(--c-text-3);
+  font-size: 0.75rem;
+}
+
+.current-markers-label {
+  margin: 0 0 0.5rem;
+  color: var(--c-text-3);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 #chapter-headings-list {
   display: flex;
   flex-direction: column;
